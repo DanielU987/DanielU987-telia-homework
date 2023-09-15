@@ -32,18 +32,52 @@ const updateSearchResults = async (keyword: string) => {
         displayError(error);
     }
 
-    // Add results one-by-one to the list
+    // Отображаем результаты поиска по одному
     results.forEach((movie) => {
         const container: HTMLElement = document.createElement('div');
-        container.innerHTML = movie.name;
-        container.addEventListener('click', updateDetails.bind(this, movie));
+        container.textContent = movie.name;
+
+        // Добавляем обработчик клика для отображения дополнительной информации о фильме
+        container.addEventListener('click', async () => {
+            try {
+                // Запрашиваем дополнительные метаданные о фильме
+                const metadata = await movies.fetchMovieMetadata(movie.id);
+                console.log(metadata)
+                // Отображаем полученные метаданные
+                updateDetails(movie, metadata);
+            } catch (error) {
+                // Обработка ошибок при запросе метаданных
+                console.error('Ошибка при получении метаданных фильма', error);
+                displayError('Ошибка при получении метаданных фильма');
+            }
+        });
 
         resultsContainer.appendChild(container);
     });
 };
-
 // Load detailed information about a movie
-const updateDetails = async (movie) => {
+const updateDetails = async (movie, metadata) => {
+    //console.log(movie)
     const imageSrc = `${api.imageBaseUrl}${movie.images['webPosterLarge']}`;
-    detailsContainer.innerHTML = `<div>${movie.description}</div><div><img src="${imageSrc}" /></div>`;
+
+    const titleElement = document.createElement('div');
+    titleElement.textContent = `Title: ${metadata.title || 'No info'}  ${metadata.originalTitle || ''}`;
+
+    const descriptionElement = document.createElement('div');
+    descriptionElement.textContent = `Description: ${movie.description || 'Нет информации'}`;
+
+    const imdbRatingElement = document.createElement('div');
+    imdbRatingElement.textContent = `IMDB Rating: ${metadata.imdbRating}`;
+
+    const posterElement = document.createElement('img');
+    posterElement.src = imageSrc;
+
+    // Очищаем предыдущие данные, если они были отображены
+    detailsContainer.innerHTML = '';
+
+    // Добавляем новые элементы на веб-страницу
+    detailsContainer.appendChild(titleElement);
+    detailsContainer.appendChild(descriptionElement);
+    detailsContainer.appendChild(imdbRatingElement);
+    detailsContainer.appendChild(posterElement);
 };
