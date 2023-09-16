@@ -12,12 +12,12 @@ export default class Movies {
     }
 
     // Search for a movie from API by its title.
-    async search(title = '') {
+    async search(title = '',offset = 0, limit = 10) {
         info(`Search for "${title}" from API.`);
 
         const params = {
-            offset: 0,
-            limit: 10,
+            offset,
+            limit,
             // possible values: description,tags,year,duration,ageRating
             fields: ['description', 'year'],
             // possible values: webPosterMedium, webPosterLarge, webBackdropMedium, webBackdropLarge
