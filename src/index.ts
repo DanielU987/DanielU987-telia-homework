@@ -2,59 +2,67 @@ import './styles.scss';
 import Movies from './Movies';
 import { api } from './Config';
 
-// Initialises Movies API
-const movies: Movies = new Movies();
+// Initialize the Movies API
+const movies = new Movies();
 
-// Remember references to the DOM elements used later
+// References to DOM elements used later
 const resultsContainer = document.getElementById('search-results');
 const detailsContainer = document.getElementById('movie-details');
 const errorContainer = document.getElementById('error');
-const searchButton = document.getElementById('search-button');
+const searchButton = document.getElementById('search-button') as HTMLInputElement;
 const searchInput = document.getElementById('search-input') as HTMLInputElement;
 const loadMoreLink = document.getElementById('load-more-link');
-
+const loadMoreContainer = document.getElementById('load-more-container');
 let offset = 0; // Initial offset
-let limit = 15; // Number of items to load per page
-const searchCache = {}; 
-// Display error message to user
+let limit = 10; // Number of items to load per page
+let searchTimeout; // Search delay timer
+const searchCache = {}; // Cache for search results
+
+// Function to display error message to the user
 const displayError = (message: string) => {
     errorContainer.innerHTML = `<div>${message}</div>`;
 };
 
+// Add an event listener to the search input
+searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimeout);
+
+    // Set a new timeout with a 300ms delay
+    searchTimeout = setTimeout(async () => {
+        const keyword = searchInput.value.trim();
+        if (keyword.length < 2) {
+            // Disable the search button and display an error message
+            searchButton.disabled = true;
+            displayError('Please enter at least 2 characters for a valid search.');
+        } else if (keyword.length >= 3) {
+            // Enable the search button and clear the error message
+            searchButton.disabled = false;
+            errorContainer.innerHTML = '';
+            const newResults = await searchWithCache(keyword);
+            displaySearchResults(newResults);
+        }
+    }, 300);
+});
+
+// Add a click event listener to the search button
 searchButton.addEventListener('click', async () => {
     const keyword = searchInput.value;
-
-    // Clear previous results and reset offset
+    if (keyword.length < 2) {
+        // Display an error message and don't perform the search
+        displayError('Please enter at least 2 characters for a valid search.');
+        return;
+    }
+    // Clear previous results and reset the offset
     resultsContainer.innerHTML = '';
-    offset = 0;
-
     try {
         const newResults = await searchWithCache(keyword);
         displaySearchResults(newResults);
-
-        // Show or hide "load more results" link based on the number of results
-        if (newResults.length < limit) {
-            loadMoreLink.style.display = 'none';
-        } else {
-            loadMoreLink.style.display = 'block';
-        }
     } catch (error) {
         displayError(error);
     }
 });
 
-loadMoreLink.addEventListener('click', async () => {
-    offset += limit;
-    const keyword = searchInput.value;
-
-    try {
-        const newResults = await searchWithCache(keyword);
-        displaySearchResults(newResults, true); // Установите append в true здесь
-    } catch (error) {
-        displayError(error);
-    }
-});
-
+// Function to perform the search with caching
 async function searchWithCache(keyword) {
     const cacheKey = `${keyword}_${offset}_${limit}`;
 
@@ -66,111 +74,143 @@ async function searchWithCache(keyword) {
 
     try {
         const newResults = await movies.search(keyword, offset, limit);
-        searchCache[cacheKey] = newResults; // Cache the result
+        // Cache the result
+        searchCache[cacheKey] = newResults;
         return newResults;
     } catch (error) {
         throw error;
     }
 }
 
-// Load detailed information about a movie
+// Function to create "Load more" functionality
+function createLoadMore() {
+    const loadMoreContainer = document.createElement('div');
+    loadMoreContainer.id = "load-more-container";
+
+    const loadMoreLink = document.createElement('a');
+    loadMoreLink.id = "load-more-link";
+    loadMoreLink.href = "#";
+    loadMoreLink.textContent = "Load more...";
+
+    loadMoreLink.addEventListener('click', async () => {
+        offset += limit;
+        const keyword = searchInput.value;
+
+        try {
+            const newResults = await searchWithCache(keyword);
+            displaySearchResults(newResults, true);
+        } catch (error) {
+            displayError(error);
+        }
+        loadMoreLink.remove();
+        loadMoreContainer.remove();
+    });
+
+    loadMoreContainer.addEventListener('click', () => {
+        loadMoreLink.click();
+    });
+
+    loadMoreContainer.appendChild(loadMoreLink);
+    resultsContainer.appendChild(loadMoreContainer);
+}
+
+// Function to display search results
+const displaySearchResults = (results, append = false) => {
+    if (append) {
+        results.forEach(async (movie) => {
+            const container: HTMLElement = document.createElement('div');
+            container.textContent = movie.name;
+
+            container.addEventListener('click', async () => {
+                try {
+                    const metadata = await movies.fetchMovieMetadata(movie.id);
+                    updateDetails(movie, metadata);
+                } catch (error) {
+                    console.error('Error fetching movie metadata', error);
+                    displayError('Error fetching movie metadata');
+                }
+            });
+
+            resultsContainer.appendChild(container);
+        });
+    } else {
+        resultsContainer.innerHTML = '';
+        results.forEach(async (movie) => {
+            const container: HTMLElement = document.createElement('div');
+            container.textContent = movie.name;
+
+            container.addEventListener('click', async () => {
+                try {
+                    const metadata = await movies.fetchMovieMetadata(movie.id);
+                    updateDetails(movie, metadata);
+                } catch (error) {
+                    console.error('Error fetching movie metadata', error);
+                    displayError('Error fetching movie metadata');
+                }
+            });
+
+            resultsContainer.appendChild(container);
+        });
+    }
+
+    if (results.length === limit) {
+        createLoadMore();
+    } else {
+        if (loadMoreContainer) {
+            loadMoreContainer.remove();
+        }
+    }
+};
+
+// Function to update movie details
 const updateDetails = async (movie, metadata) => {
     const imageSrc = `${api.imageBaseUrl}${movie.images['webPosterLarge']}`;
 
     const titleElement = document.createElement('div');
-    titleElement.textContent = `Title: ${metadata.title || 'No info'}  ${metadata.originalTitle || ''}`;
+    titleElement.textContent = `Title: ${getTitleForDisplay(metadata.title, metadata.originalTitle) || 'No info'}`;
 
     const descriptionElement = document.createElement('div');
     descriptionElement.textContent = `Description: ${movie.description || 'No info'}`;
 
+    const uniqueWordsCount = countUniqueWords(movie.description);
+    const uniqueWordsElement = document.createElement('div');
+    uniqueWordsElement.textContent = `Unique Words Count: ${uniqueWordsCount}`;
+
     const imdbRatingElement = document.createElement('div');
-    imdbRatingElement.textContent = `IMDB Rating: ${metadata.imdbRating || 'No info'} `;
+    imdbRatingElement.textContent = `IMDB Rating: ${metadata.imdbRating || 'No info'}`;
 
     const posterElement = document.createElement('img');
     posterElement.src = imageSrc;
 
-    // Очищаем предыдущие данные, если они были отображены
     detailsContainer.innerHTML = '';
 
-    // Добавляем новые элементы на веб-страницу
     detailsContainer.appendChild(titleElement);
     detailsContainer.appendChild(descriptionElement);
+    detailsContainer.appendChild(uniqueWordsElement);
     detailsContainer.appendChild(imdbRatingElement);
     detailsContainer.appendChild(posterElement);
 };
 
-const displaySearchResults = (results, append = false) => {
-    // Если append установлен в true, добавляем новые результаты к существующим
-    if (append) {
-        results.forEach((movie) => {
-            const container: HTMLElement = document.createElement('div');
-            container.innerHTML = movie.name;
-            container.addEventListener('click', updateDetails.bind(this, movie));
-
-            resultsContainer.appendChild(container);
-        });
+function getTitleForDisplay(title, originalTitle) {
+    console.log(title,"-",originalTitle)
+    if (title === originalTitle || originalTitle === null) {
+        return title;
     } else {
-        // В противном случае очищаем предыдущие результаты и отображаем только новые
-        resultsContainer.innerHTML = '';
-        results.forEach((movie) => {
-            const container: HTMLElement = document.createElement('div');
-            container.innerHTML = movie.name;
-            container.addEventListener('click', updateDetails.bind(this, movie));
-
-            resultsContainer.appendChild(container);
-        });
+        return `${title} (${originalTitle})`;
     }
+}
 
-    // Устанавливаем видимость "load more results" в зависимости от количества результатов
-    if (results.length < limit) {
-        loadMoreLink.style.display = 'none';
-    } else {
-        loadMoreLink.style.display = 'block';
-    }
-};
+// Function to count the number of unique words in the plot text
+function countUniqueWords(text) {
+    // Convert the text to lowercase to make it case-insensitive
+    const lowercaseText = text.toLowerCase();
 
+    // Split the text into words
+    const words = lowercaseText.split(/\s+/);
 
-/*
-const updateSearchResults = async (keyword: string) => {
-    resultsContainer.innerHTML = '';
-    if (searchCache[keyword]) {
-        console.log(`Using cached results for "${keyword}"`);
-        displaySearchResults(searchCache[keyword]);
-        return;
-    }
+    // Use a Set to store unique words
+    const uniqueWords = new Set(words);
 
-    let results = [];
-
-    try {
-        results = await movies.search(keyword);
-    } catch (error) {
-        displayError(error);
-    }
-
-    // Отображаем результаты поиска по одному
-    results.forEach((movie) => {
-        const container: HTMLElement = document.createElement('div');
-        container.textContent = movie.name;
-
-        // Добавляем обработчик клика для отображения дополнительной информации о фильме
-        container.addEventListener('click', async () => {
-            try {
-                // Запрашиваем дополнительные метаданные о фильме
-                const metadata = await movies.fetchMovieMetadata(movie.id);
-                //console.log(metadata)
-                // Отображаем полученные метаданные
-                updateDetails(movie, metadata);
-            } catch (error) {
-                // Обработка ошибок при запросе метаданных
-                console.error('Ошибка при получении метаданных фильма', error);
-                displayError('Ошибка при получении метаданных фильма');
-            }
-        });
-
-        resultsContainer.appendChild(container);
-    });
-    if (results.length < limit) {
-        loadMoreLink.style.display = 'none';
-    }
-    searchCache[keyword] = results;
-};*/
+    // Return the count of unique words
+    return uniqueWords.size;
+}

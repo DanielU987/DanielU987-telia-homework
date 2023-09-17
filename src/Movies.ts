@@ -2,61 +2,78 @@ import axios from 'axios';
 import { api } from './Config';
 import { info } from './Log';
 
+// Create an Axios instance for movie-related API requests
 const moviesAjax = axios.create({
     baseURL: api.baseUrl
 });
 
+// Define a Movies class that encapsulates movie-related functionality
 export default class Movies {
     constructor() {
-        info('Initialise Movies API.');
+        info('Initialize Movies API.');
     }
 
-    // Search for a movie from API by its title.
-    async search(title = '',offset = 0, limit = 10) {
+    // Search for a movie from the API by its title.
+    async search(title = '', offset = 0, limit = 10) {
         info(`Search for "${title}" from API.`);
 
+        // Define request parameters, including offset, limit, fields, and images
         const params = {
             offset,
             limit,
-            // possible values: description,tags,year,duration,ageRating
             fields: ['description', 'year'],
-            // possible values: webPosterMedium, webPosterLarge, webBackdropMedium, webBackdropLarge
             images: ['webPosterLarge'],
         };
 
-        const { data } = await moviesAjax.get(`search/${title}`, {
-            params,
-            
-        });
-        if (data.Error) {
-            throw data.Error;
+        try {
+            // Send a GET request to search for movies
+            const { data } = await moviesAjax.get(`search/${title}`, {
+                params,
+            });
+
+            // Check for errors in the response data
+            if (data.Error) {
+                throw data.Error;
+            }
+
+            // Log the retrieved movie items
+            console.log(data.items);
+
+            // Return the movie items
+            return data.items;
+        } catch (error) {
+            // Handle and log errors that may occur during the search
+            console.error('Error searching for movies', error);
+            throw error;
         }
-        console.log(data.items)
-        return data.items;
     }
+
+    // Fetch metadata for a movie using its ID
     async fetchMovieMetadata(movieId) {
         try {
-            // Создаем URL для запроса метаданных фильма
+            // Create the URL for fetching movie metadata
             const metadataUrl = `${api.baseUrl}assets/${movieId}`;
-        
-            // Отправляем GET-запрос к API
+
+            // Send a GET request to fetch movie metadata
             const response = await moviesAjax.get(metadataUrl);
-        
-            // Получаем данные о фильме из ответа
+
+            // Extract movie metadata from the response data
             const movieMetadata = response.data;
-            console.log(movieMetadata)
-            // Возвращаем необходимые метаданные
+
+            // Log the retrieved movie metadata
+            console.log(movieMetadata);
+
+            // Return the relevant metadata fields
             return {
                 title: movieMetadata.title,
                 originalTitle: movieMetadata.titleOriginal,
                 description: movieMetadata.description,
                 imdbRating: movieMetadata.imdbRating,
-                images: movieMetadata.images
-                // Другие поля, которые вас интересуют
+                // Add other fields of interest here
             };
         } catch (error) {
-            // Обработка ошибок
-            console.error('Ошибка при запросе метаданных фильма', error);
+            // Handle and log errors that may occur during metadata retrieval
+            console.error('Error fetching movie metadata', error);
             throw error;
         }
     }
